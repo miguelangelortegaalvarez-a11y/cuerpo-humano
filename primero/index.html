@@ -133,7 +133,11 @@ body:not(.en-menu) .casa { display: block; }
 /* final, estrella, premio */
 .final { position: fixed; left: 50%; bottom: 6vmin; transform: translateX(-50%); z-index: 45; display: none; gap: 3vmin; }
 .final.visible { display: flex; animation: aparece .4s; }
-.final button { border: none; border-radius: 4vmin; padding: 2.2vmin 5vmin; font-size: 5vmin; cursor: pointer; background: var(--verde); color: #fff !important; box-shadow: 0 1vmin 0 #2f8456; }
+.final button { border: none; border-radius: 4vmin; padding: 2.2vmin 5vmin; font-size: min(5vmin, 3.2vw); cursor: pointer; background: var(--verde); color: #fff !important; box-shadow: 0 1vmin 0 #2f8456; }
+.final button { white-space: nowrap; }
+body.final-cuento .fila-mandos { visibility: hidden; }
+body.final-cuento .final { left: auto; right: 3vw; bottom: calc(5 * var(--vh)); transform: none; width: 40vw; }
+body.final-cuento .final button { flex: 1; font-size: min(4.5vmin, 2.6vw); padding: 2.2vmin 1vmin; }
 .final button.blanco { background: #fff; color: var(--tinta) !important; box-shadow: 0 1vmin 0 rgba(0,0,0,.12); }
 .velo { position: fixed; inset: 0; z-index: 68; background: radial-gradient(circle at 50% 45%, rgba(255,247,214,.92), rgba(255,236,170,.75)); opacity: 0; pointer-events: none; }
 .premio-estrella { position: fixed; left: 50%; top: 42%; z-index: 70; width: 0; height: 0; pointer-events: none; }
@@ -333,7 +337,7 @@ function pintaMenu() {
 function guarda() { try { localStorage.setItem(CLAVE, JSON.stringify(hechos)); } catch (e) {} }
 function ir(n) {
   turno++; pausado = false; if (ctx) ctx.resume(); callaVoz(); cuentoId++;
-  $("#final").classList.remove("visible"); $$(".confeti, .palabra.volando").forEach(e => e.remove());
+  $("#final").classList.remove("visible"); document.body.classList.remove("final-cuento"); $$(".confeti, .palabra.volando").forEach(e => e.remove());
   const sec = n.startsWith("n") && n !== "n1" ? "juego" : n;
   $$(".pantalla").forEach(p => p.classList.toggle("activa", p.id === sec));
   document.body.classList.toggle("en-menu", n === "menu" || n === "portada");
@@ -357,7 +361,7 @@ async function completa(id, repetir) {
   hechos[id] = true; guarda();
   const i = CAMINO.indexOf(id); if (nuevo && i < CAMINO.length - 1 && !hechos[CAMINO[i + 1]]) porAbrir = CAMINO[i + 1];
   confeti(); SON.fiesta();
-  $("#final").classList.add("visible"); $("#otra").onclick = () => ir(id);
+  $("#final").classList.add("visible"); document.body.classList.toggle("final-cuento", id === "cuento"); $("#otra").onclick = () => ir(id);
   if (id === "cuento" || !nuevo) return;
   await habla("nivel"); if (mio !== turno) return;
   await espera(500); if (mio !== turno) return;
