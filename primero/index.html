@@ -83,6 +83,7 @@ body:not(.en-menu) .casa { display: block; }
 @keyframes brilla { 50% { filter: brightness(1.15) drop-shadow(0 0 1.6vmin #ffe36e); transform: scale(1.12); } }
 .etiqueta-cuento { position: absolute; transform: translate(-50%, -50%) scale(0); background: #fff; border-radius: 2vmin; padding: .4vmin 2vmin; font-size: 3.6vmin; white-space: nowrap;
   box-shadow: 0 .8vmin 2vmin rgba(0,0,0,.15); transition: transform .4s cubic-bezier(.3,1.6,.5,1); z-index: 8; }
+.etiqueta-cuento.extremidad { background: var(--morado); color: #fff; }
 .etiqueta-cuento.on { transform: translate(-50%, -50%) scale(1); }
 .sentido-cuento { position: absolute; width: 12%; transform: translate(-50%, -50%) scale(0); transition: transform .45s cubic-bezier(.3,1.6,.5,1); z-index: 8; filter: drop-shadow(0 .5vmin 1vmin rgba(0,0,0,.2)); }
 .sentido-cuento.on { transform: translate(-50%, -50%) scale(1); }
@@ -405,8 +406,9 @@ const ESCENAS = [
   { voz: "c01", texto: "Este es Rasy. ¡Hoy vamos a descubrir cómo es nuestro cuerpo, por fuera y por dentro!",
     antes: () => { capa("cuerpo"); const c = $('#escena .capa[data-capa="cuerpo"]'); c.classList.remove("salta"); void c.offsetWidth; c.classList.add("salta"); SON.salto(); } },
   { voz: "c02", texto: "Por fuera tenemos la cabeza, el tronco y las extremidades: los brazos y las piernas.",
-    durante: async () => { for (const [t, x, y, ms] of [["Cabeza", .5, .06, 900], ["Tronco", .5, .42, 900], ["Brazos", .2, .45, 1500], ["Piernas", .5, .82, 900]]) {
-      const e = document.createElement("div"); e.className = "etiqueta-cuento"; e.textContent = t; enEscena(e, x, y); await espera(60); e.classList.add("on"); SON.pop(); await espera(ms); } } },
+    durante: async () => { await espera(900);
+      for (const [t, x, y, ms, clase] of [["Cabeza", .5, .06, 1000], ["Tronco", .5, .42, 1300], ["Extremidades", .16, .7, 1400, "extremidad"], ["Brazos", .15, .5, 800, "extremidad"], ["Piernas", .5, .8, 800, "extremidad"]]) {
+        const e = document.createElement("div"); e.className = "etiqueta-cuento " + (clase || ""); e.textContent = t; enEscena(e, x, y); await espera(60); e.classList.add("on"); SON.pop(); await espera(ms); } } },
   { voz: "c03", texto: "Con los cinco sentidos notamos todo lo que pasa: vemos, oímos, olemos, saboreamos y tocamos.",
     antes: () => limpiaEscena(),
     durante: async () => { await espera(2600); for (const [n, x, y] of [["ojo", .2, .1], ["oreja", .82, .12], ["nariz", .17, .3], ["lengua", .83, .32], ["mano", .14, .58]]) {
