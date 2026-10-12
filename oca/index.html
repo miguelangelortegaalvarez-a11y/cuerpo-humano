@@ -90,7 +90,7 @@
 <section id="inicio" class="pantalla activa">
   <div class="oca-grande">🪿</div>
   <h1>La Oca de las tablas</h1>
-  <h2>🦕 tú contra el 🦖 T-Rex</h2>
+  <h2>Tabla del 2<br>🦕 tú contra el 🦖 T-Rex</h2>
   <button class="boton tirar" id="jugar">¡A jugar!</button>
 </section>
 
@@ -205,7 +205,7 @@ function aviso(emoji, texto, ms = 1900) {
 }
 
 // ---------- pregunta ----------
-function nuevaOperacion() { return { t: Math.random() < .5 ? 2 : 3, k: 1 + (Math.random() * 10 | 0) }; }
+function nuevaOperacion() { return { t: 2, k: 1 + (Math.random() * 10 | 0) }; }
 function opciones(t, k) {
   const r = t * k;
   const cand = new Set([r + t, r - t, r + 1, r - 1, t + k, r + 2, r - 2]);
@@ -246,11 +246,11 @@ function preguntar(j) {
   });
 }
 
-function tirarDado(j) {
+function tirarDado(j, atras) {
   return new Promise(resolver => {
-    hoja(`<div class="quien">${j.robot ? '🦖 El T-Rex tira' : '🦕 ¡Muy bien! Tira el dado'}</div>
+    hoja(`<div class="quien">${atras ? (j.robot ? '🦖 El T-Rex va hacia atrás' : '🦕 Tira… y vas hacia atrás') : (j.robot ? '🦖 El T-Rex tira' : '🦕 ¡Muy bien! Tira el dado')}</div>
       <div class="dado" id="dado">🎲</div>
-      <button class="boton tirar" id="tirar">Tirar</button>`);
+      <button class="boton tirar" id="tirar" style="background:${atras ? '#e8742a' : '#22b07d'}">Tirar</button>`);
     const go = async () => {
       $('tirar').disabled = true; $('tirar').style.visibility = 'hidden';
       const d = $('dado'); d.classList.add('rueda');
@@ -317,10 +317,10 @@ async function bucle() {
         otraVez = false;
         const acierto = await preguntar(j);
         if (yo !== partida) return;
-        if (!acierto) { cerrarHoja(); await aviso('🙈', j.robot ? '¡El T-Rex ha fallado!' : 'Esta vez no avanzas', 1300); break; }
-        const v = await tirarDado(j);
+        const v = await tirarDado(j, !acierto);
         if (yo !== partida) return;
-        await avanzar(turno, v);
+        if (acierto) await avanzar(turno, v);
+        else await mover(turno, Math.max(0, j.pos - v));
         if (j.pos === 63) return ganar(j);
         otraVez = await casilla(turno);
         if (yo !== partida) return;
