@@ -474,10 +474,13 @@ async function narra(frase, idioma, clave) {
 // ---------- Escena ----------
 const R_ESCENA = 2752 / 1536;
 function ajusta() {
-  const R = R_ESCENA, vw = innerWidth, vh = innerHeight, VISIBLE = .84;   // se recorta como mucho un 8 % por lado
+  // Se recorta como mucho un 8 % por cada lado (tablet) o un 8 % de alto, y siempre de ARRIBA (móvil),
+  // para no comerse nunca los pies; lo que sobre lo rellena el fondo difuminado
+  const R = R_ESCENA, vw = innerWidth, vh = innerHeight, VISIBLE_ANCHO = .84, VISIBLE_ALTO = .92;
   const contiene = Math.min(vw, vh * R), cubre = Math.max(vw, vh * R);
-  const w = Math.max(contiene, Math.min(cubre, vw / VISIBLE, vh * R / VISIBLE));
-  escena.style.width = w + 'px'; escena.style.height = w / R + 'px';
+  const w = Math.max(contiene, Math.min(cubre, vw / VISIBLE_ANCHO, vh * R / VISIBLE_ALTO)), h = w / R;
+  escena.style.width = w + 'px'; escena.style.height = h + 'px';
+  escena.style.top = (h > vh ? vh - h / 2 : vh / 2) + 'px';                     // si sobra alto, pegada abajo
   escena.style.setProperty('--u', w / 100 + 'px');                              // lo de dentro de la escena
   document.documentElement.style.setProperty('--u', Math.min(contiene / 100, 11) + 'px');   // botones y texto (con tope en pantallas grandes)
   Object.values(actores).forEach(a => a.esquinas && encajaTele(a));
@@ -589,8 +592,8 @@ function esperaToque(id) {
   return new Promise(r => { pendiente = { id, resolve: r }; });
 }
 
-// Órdenes de los pasos: 'pose mario mario-salta', 'bota kenzo', 'pon pizza queso', 'mueve pizza horno',
-// 'enciende luzHorno', 'apaga interruptor', 'oscuro', 'suena ding', 'zzz kenzo'
+// Órdenes de los pasos: 'pose nino nino-salta', 'bota perro', 'pon pizza queso', 'mueve pizza horno',
+// 'enciende luzHorno', 'apaga interruptor', 'oscuro', 'suena ding', 'zzz perro'
 function haz(orden) {
   const [verbo, id, arg] = orden.split(' '), a = actores[id];
   switch (verbo) {
@@ -647,7 +650,7 @@ async function abre(n) {
   terminada = true; botones(true);
 }
 
-// ---------- Mini-juego «Where is…?»: la voz pregunta y Mario toca la tarjeta buena ----------
+// ---------- Mini-juego «Where is…?»: la voz pregunta y el niño toca la tarjeta buena ----------
 let juego = null, cartaPendiente = null;
 const baraja = a => a.map(v => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map(v => v[1]);
 const COLORES = ['#ff6b6b', '#ffc93c', '#5ec8f2', '#7ed957', '#c08bff', '#ff9a3d'];
@@ -784,7 +787,7 @@ async function parejas(P, mio) {
   await di(F.fin, 'juego-fin');
 }
 
-// ---------- «Kenzo is hungry!»: Kenzo pide algo y Mario se lo da ----------
+// ---------- «Kenzo is hungry!»: Kenzo pide algo y el niño se lo da ----------
 async function kenzo(K, mio) {
   juego = { actual: null };
   const F = C.frasesJuego, di = (f, clave) => { juego.actual = { f, clave }; return narra(f.di, 'en', clave); };
