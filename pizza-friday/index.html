@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cuentos en inglés</title>
+<!--
+  Motor de los cuentos en inglés. Los datos de cada cuento (textos, dibujos, voces) viven en
+  privado/ingles/<cuento>/datos.js, fuera de git, porque llevan a la familia de verdad.
+  Uso: ingles.html?cuento=pizza-friday   ·   ?ver=3 pinta la página 4 ya terminada   ·   ?zonas marca las zonas que se tocan
+-->
+<style>
+  @font-face {
+    font-family: 'Andika';
+    src: url('lib/fuentes/andika-700.woff2') format('woff2');
+    font-weight: 700;
+  }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #2b1d15;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+    font-family: 'Andika', 'Chalkboard SE', 'Comic Sans MS', sans-serif; font-weight: 700;
+  }
+  /* La escena llena la pantalla recortando como mucho un 8 % por lado; lo que sobre lo rellena el fondo difuminado */
+  #difuso {
+    position: fixed; inset: -60px; background: center / cover no-repeat;
+    filter: blur(22px) brightness(.85); transition: filter 1.4s;
+  }
+  body.noche #difuso { filter: blur(22px) brightness(.32); }
+  #escena {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    overflow: hidden; background: #000;
+  }
+  /* Botones y texto van pegados a la pantalla (no a la escena), respetando la muesca del móvil */
+  #ui { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+  #ui .boton { pointer-events: auto; }
+  #ui .boton.inactivo { pointer-events: none; }
+  #girar {
+    position: fixed; inset: 0; z-index: 100; display: none; flex-direction: column; gap: 24px;
+    align-items: center; justify-content: center; background: #2b1d15; color: #fff; font-size: 22px; text-align: center;
+  }
+  #girar svg { width: 120px; height: 120px; animation: girar 2.4s ease-in-out infinite; }
+  @keyframes girar { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+  @media (orientation: portrait) { #girar { display: flex; } }
+  #fondo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #capa { position: absolute; inset: 0; }
+
+  /* Personajes: x,y = los pies (abajo en el centro) */
+  .dibujo { position: absolute; transform: translate(-50%, -100%); }
+  .dibujo img { height: 100%; width: 100%; display: block; pointer-events: none; transform-origin: 50% 100%; }
+  .bota img, .bota svg { animation: bota .6s ease-out; }
+  @keyframes bota {
+    0%, 100% { transform: translateY(0) scale(1, 1); }
+    25% { transform: translateY(-10%) scale(.96, 1.05); }
+    55% { transform: translateY(0) scale(1.05, .95); }
+    75% { transform: translateY(-3%) scale(1, 1); }
+  }
+  /* Lo que hay que tocar late y brilla */
+  .late img, .late svg {
+    animation: latido 1.2s ease-in-out infinite;
+    filter: drop-shadow(0 0 calc(var(--u) * .9) #ffd84a) drop-shadow(0 0 calc(var(--u) * .3) #fff);
+  }
+  @keyframes latido { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+
+  /* La pizza: x,y = el centro */
+  .pizza {
+    position: absolute; z-index: 6; aspect-ratio: 1;
+    transition: left 1.2s ease-in-out, top 1.2s ease-in-out, width 1.2s ease-in-out, transform 1.2s ease-in-out;
+  }
+  .pizza svg { width: 100%; height: 100%; display: block; overflow: visible; transform-origin: 50% 50%; }
+  .pizza .capa {
+    opacity: 0; transform: scale(.3); transform-box: fill-box; transform-origin: center;
+    transition: opacity .3s, transform .5s cubic-bezier(.34, 1.7, .6, 1);
+  }
+  .pizza.tomate .tomate, .pizza.queso .queso, .pizza.ojos .ojos, .pizza.sonrisa .sonrisa,
+  .pizza.horneada .horneada { opacity: 1; transform: scale(1); }
+  .pizza .masa { transition: fill 1.5s, stroke 1.5s; }
+  .pizza.horneada .masa { fill: #e7ac5c; stroke: #b8742c; }
+  .vapor { position: absolute; left: 25%; right: 25%; bottom: 75%; height: 70%; display: none; justify-content: space-around; }
+  .pizza.humo .vapor { display: flex; }
+  .vapor i {
+    width: 9%; border-radius: 50%; opacity: 0;
+    background: linear-gradient(transparent, rgba(255, 255, 255, .85), transparent);
+    animation: vapor 2.6s ease-in-out infinite;
+  }
+  .vapor i:nth-child(2) { animation-delay: .9s; }
+  .vapor i:nth-child(3) { animation-delay: 1.7s; }
+  @keyframes vapor {
+    0% { opacity: 0; transform: translateY(30%) scaleX(1); }
+    40% { opacity: .9; }
+    100% { opacity: 0; transform: translateY(-40%) scaleX(1.6); }
+  }
+
+  /* Zonas del fondo que se pueden tocar (tele, horno, sofá…): x,y = esquina de arriba a la izquierda */
+  .zona { position: absolute; z-index: 2; border-radius: calc(var(--u) * 2); }   /* detrás de los personajes */
+  .ver-zonas .zona { outline: 3px dashed #e0189a; background: rgba(224, 24, 154, .15); }   /* ?zonas: para colocarlas */
+  .zona.late {
+    z-index: 30; border: calc(var(--u) * .6) solid #ffd84a; box-sizing: border-box;
+    box-shadow: 0 0 calc(var(--u) * 2.5) #ffd84a, inset 0 0 calc(var(--u) * 2.5) rgba(255, 216, 74, .6);
+    animation: latido 1.2s ease-in-out infinite;
+  }
+  .luz {
+    position: absolute; z-index: 7; pointer-events: none; mix-blend-mode: screen; opacity: 0; transition: opacity 1s;
+    background: radial-gradient(ellipse at 50% 55%, rgba(255, 190, 90, .8), rgba(255, 130, 40, .45) 55%, rgba(255, 100, 20, 0) 80%);
+  }
+  .luz.on { opacity: 1; }
+  .luz.destello { animation: destello .5s ease-out; }
+  @keyframes destello { 50% { filter: brightness(1.8); } }
+  .interruptor {
+    position: absolute; z-index: 3; aspect-ratio: .62; background: #fbf7ef;   /* con la luz apagada se queda a oscuras */
+    border-radius: calc(var(--u) * .6);
+    box-shadow: inset 0 0 0 calc(var(--u) * .15) #cdbfa9, 0 calc(var(--u) * .2) calc(var(--u) * .5) rgba(0, 0, 0, .3);
+  }
+  .interruptor::before { content: ''; position: absolute; inset: -70%; }   /* más fácil de acertar con el dedo */
+  .interruptor i {
+    position: absolute; left: 24%; right: 24%; top: 16%; height: 36%; background: #fff;
+    border-radius: calc(var(--u) * .3); box-shadow: 0 calc(var(--u) * .18) 0 #c9bba3; transition: top .15s;
+  }
+  .interruptor.off i { top: 48%; }
+  .interruptor.late { z-index: 30; animation: latido 1.2s ease-in-out infinite; box-shadow: 0 0 calc(var(--u) * 2) calc(var(--u) * .6) #ffd84a; }
+  /* La tele: una imagen deformada para que sus 4 esquinas caigan en las de la pantalla del dibujo */
+  .tele {
+    position: absolute; left: 0; top: 0; z-index: 25; transform-origin: 0 0;
+    background: center / 100% 100% no-repeat; opacity: 0; transition: opacity 1.2s;
+  }
+  .tele.on { opacity: 1; animation: parpadeo 3s ease-in-out infinite; box-shadow: 0 0 6px 2px rgba(255, 170, 90, .55); }
+  @keyframes parpadeo { 50% { filter: brightness(1.12) saturate(1.1); } }
+
+  #oscuro {
+    position: absolute; inset: 0; z-index: 20; pointer-events: none;
+    background: rgba(8, 12, 38, .72); opacity: 0; transition: opacity 1.4s;
+  }
+  #oscuro.on { opacity: 1; }
+  #luzTele {
+    position: absolute; inset: 0; z-index: 26; pointer-events: none; mix-blend-mode: screen;
+    background: radial-gradient(ellipse 50% 60% at 15% 45%, rgba(255, 150, 80, .38), rgba(170, 90, 255, .16) 50%, transparent 78%);
+    opacity: 0; transition: opacity 1.5s;
+  }
+  #escena.tele-on #luzTele { opacity: 1; animation: tvluz 7s ease-in-out infinite; }
+  @keyframes tvluz { 50% { filter: hue-rotate(60deg); } }
+
+  .zzz { position: absolute; left: 60%; top: -10%; }
+  .zzz i {
+    position: absolute; font-style: normal; font-size: calc(var(--u) * 2.8); color: #fff; opacity: 0;
+    text-shadow: 0 0 calc(var(--u) * .6) rgba(0, 0, 0, .5); animation: zeta 3s ease-out infinite;
+  }
+  .zzz i:nth-child(2) { animation-delay: 1s; }
+  .zzz i:nth-child(3) { animation-delay: 2s; }
+  @keyframes zeta {
+    0% { opacity: 0; transform: translate(0, 0) scale(.6); }
+    20% { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(var(--u) * 3), calc(var(--u) * -6)) scale(1.3); }
+  }
+
+  /* Palabra al tocar algo: inglés grande, español pequeño debajo */
+  #burbuja {
+    position: absolute; z-index: 45; pointer-events: none; text-align: center; white-space: nowrap;
+    background: #fff; border-radius: calc(var(--u) * 2.5); padding: calc(var(--u) * .7) calc(var(--u) * 2.4);
+    box-shadow: 0 calc(var(--u) * .5) calc(var(--u) * 1.6) rgba(0, 0, 0, .3);
+    transform: translate(-50%, -100%) scale(.3); opacity: 0; transition: transform .35s cubic-bezier(.34, 1.7, .6, 1), opacity .2s;
+  }
+  #burbuja.ve { transform: translate(-50%, -112%) scale(1); opacity: 1; }
+  #burbuja b { display: block; font-size: calc(var(--u) * 3.6); color: #e0662b; line-height: 1.15; }
+  #burbuja span { display: block; font-size: calc(var(--u) * 1.9); color: #7a6656; }
+
+  /* Lo que va diciendo la voz */
+  #texto {
+    position: absolute; left: 50%; bottom: calc(var(--u) * 1.6 + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    max-width: 70%; z-index: 50; pointer-events: none; text-align: center;
+    background: rgba(255, 255, 255, .93); color: #3a2a20; font-size: calc(var(--u) * 2.7); line-height: 1.2;
+    padding: calc(var(--u) * .7) calc(var(--u) * 2.4); border-radius: calc(var(--u) * 3);
+    opacity: 0; transition: opacity .3s;
+  }
+  #texto.ve { opacity: 1; }
+  #texto.es { color: #b3401a; }
+  #texto .p { pointer-events: auto; cursor: pointer; border-radius: calc(var(--u) * .8); padding: 0 calc(var(--u) * .15); transition: background .2s; }
+  #texto .p.activa { background: #ffe27a; }
+
+  .boton {
+    position: absolute; z-index: 60; border-radius: 50%; box-sizing: border-box; cursor: pointer;
+    display: grid; place-items: center; font-size: calc(var(--u) * 3.4); line-height: 1;
+    border: calc(var(--u) * .5) solid #fff;
+    background: radial-gradient(circle at 35% 30%, #ffd27a, #ff8a3d 70%);
+    box-shadow: 0 calc(var(--u) * .6) 0 #c4561c, 0 calc(var(--u) * 1) calc(var(--u) * 2) rgba(0, 0, 0, .35);
+    transition: opacity .3s;
+  }
+  .boton svg { width: 55%; height: 55%; }
+  .boton.inactivo { opacity: .3; pointer-events: none; }
+  #sig { right: calc(var(--u) * 1.6 + env(safe-area-inset-right)); bottom: calc(var(--u) * 1.6 + env(safe-area-inset-bottom)); width: calc(var(--u) * 10.5); height: calc(var(--u) * 10.5); display: none; }
+  #sig.ve { display: grid; animation: latido 1.4s ease-in-out infinite; }
+  #es { left: calc(var(--u) * 1.6 + env(safe-area-inset-left)); bottom: calc(var(--u) * 1.8 + env(safe-area-inset-bottom)); width: calc(var(--u) * 7.5); height: calc(var(--u) * 7.5); }
+  #oir { left: calc(var(--u) * 10.6 + env(safe-area-inset-left)); bottom: calc(var(--u) * 1.8 + env(safe-area-inset-bottom)); width: calc(var(--u) * 7.5); height: calc(var(--u) * 7.5); }
+  #ant { left: calc(var(--u) * 1.2 + env(safe-area-inset-left)); top: calc(var(--u) * 1.2 + env(safe-area-inset-top)); width: calc(var(--u) * 5); height: calc(var(--u) * 5); opacity: .45; }
+
+  #portada {
+    position: absolute; inset: 0; z-index: 70; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: calc(var(--u) * 4);
+    background: radial-gradient(ellipse at center, rgba(20, 30, 60, .15), rgba(20, 30, 60, .6));
+    transition: opacity 1s;
+  }
+  #portada { pointer-events: auto; }
+  /* «¿Volver al inicio?»: sí (verde) / no (rojo); si nadie toca nada, se cierra sola */
+  #seguro {
+    position: absolute; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center;
+    background: rgba(20, 30, 60, .45); pointer-events: auto;
+  }
+  #seguro.oculto { display: none; }
+  #seguro .caja {
+    display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 2.4);
+    background: #fffaf2; border-radius: calc(var(--u) * 3); padding: calc(var(--u) * 3) calc(var(--u) * 5);
+    box-shadow: 0 calc(var(--u) * 1.4) calc(var(--u) * 4) rgba(0, 0, 0, .35);
+  }
+  #seguro .casa { width: calc(var(--u) * 7); height: calc(var(--u) * 7); }
+  #seguro .pregunta { font-size: calc(var(--u) * 3); color: #3a2a20; }
+  #seguro .opciones { display: flex; gap: calc(var(--u) * 6); }
+  #seguro .boton { position: relative; width: calc(var(--u) * 11); height: calc(var(--u) * 11); }
+  #seguro .si { background: radial-gradient(circle at 35% 30%, #a8f08a, #4cb83a 70%); box-shadow: 0 calc(var(--u) * .6) 0 #2f8a22, 0 calc(var(--u) * 1) calc(var(--u) * 2) rgba(0, 0, 0, .3); }
+  #seguro .no { background: radial-gradient(circle at 35% 30%, #ffb3a8, #e0574a 70%); box-shadow: 0 calc(var(--u) * .6) 0 #a8362b, 0 calc(var(--u) * 1) calc(var(--u) * 2) rgba(0, 0, 0, .3); }
+  /* Oculta del todo: si no, su ▶ invisible seguía pulsable en el centro y volvía a empezar el cuento */
+  #portada.oculto { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 1s, visibility 0s 1s; }
+  #portada h1 {
+    margin: 0; color: #fff; font-size: calc(var(--u) * 9); line-height: 1.05; text-align: center;
+    text-shadow: 0 calc(var(--u) * .5) 0 #c46a2b, 0 calc(var(--u) * 1) calc(var(--u) * 3) rgba(0, 0, 0, .45);
+  }
+  .arranque { display: flex; align-items: center; gap: calc(var(--u) * 5); }
+  #jugar { position: relative; width: calc(var(--u) * 15); height: calc(var(--u) * 15); animation: latido 1.6s ease-in-out infinite; }
+  #juegos { position: relative; width: calc(var(--u) * 10.5); height: calc(var(--u) * 10.5); }
+  #juegos svg { width: 62%; height: 62%; }
+  #jugar.cargando, #juegos.cargando { opacity: .4; pointer-events: none; animation: none; }
+
+  /* Mini-juego «Where is…?» */
+  #velo { position: absolute; inset: 0; z-index: 30; background: rgba(255, 246, 232, .6); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+  .carta {
+    position: absolute; z-index: 35; width: 24%; aspect-ratio: 1; transform: translate(-50%, -50%);
+    background: #fffaf2; border-radius: calc(var(--u) * 3); overflow: hidden; cursor: pointer;
+    display: grid; place-items: center;
+    box-shadow: 0 calc(var(--u) * .7) 0 #e2c4a0, 0 calc(var(--u) * 1.2) calc(var(--u) * 2.6) rgba(0, 0, 0, .25);
+    animation: entra .45s cubic-bezier(.34, 1.6, .6, 1) both;
+  }
+  .emoji { font-size: calc(var(--u) * 10); line-height: 1; pointer-events: none; }
+  .carta img { position: absolute; left: 7%; top: 7%; width: 86%; height: 86%; object-fit: contain; pointer-events: none; }
+  .carta.foto img { left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+  .carta .pizza { position: relative; width: 84%; transform: none; transition: none; pointer-events: none; }
+  .carta.bien {
+    animation: bien .7s ease-out;
+    box-shadow: 0 0 0 calc(var(--u) * .7) #7ed957, 0 calc(var(--u) * 1.2) calc(var(--u) * 3) rgba(80, 180, 60, .6);
+  }
+  .carta.mal { animation: mal .45s ease-in-out; }
+  .carta.fuera { animation: none; transition: opacity .3s, transform .3s; opacity: 0; transform: translate(-50%, -50%) scale(.6); }
+  @keyframes entra { from { opacity: 0; transform: translate(-50%, -50%) scale(.4); } }
+  @keyframes bien { 40% { transform: translate(-50%, -50%) scale(1.14); } }
+  @keyframes mal { 20%, 60% { transform: translate(-54%, -50%); } 40%, 80% { transform: translate(-46%, -50%); } }
+  #estrellas { position: absolute; z-index: 36; top: 10%; left: 50%; transform: translateX(-50%); display: flex; gap: calc(var(--u) * 1.2); }
+  #estrellas i {
+    font-style: normal; font-size: calc(var(--u) * 5); line-height: 1; color: rgba(255, 255, 255, .9);
+    text-shadow: 0 0 calc(var(--u) * .5) rgba(0, 0, 0, .3); transition: color .4s, transform .4s cubic-bezier(.34, 1.7, .6, 1);
+  }
+  #estrellas i.on { color: #ffc93c; transform: scale(1.25); }
+  .confeti {
+    position: absolute; z-index: 40; width: calc(var(--u) * 1.2); height: calc(var(--u) * 1.2); border-radius: 30%;
+    pointer-events: none; animation: confeti 1s ease-out forwards;
+  }
+  /* Menú de juegos: una tarjeta grande por juego */
+  .opcion {
+    position: absolute; z-index: 35; aspect-ratio: 1; cursor: pointer; overflow: hidden;
+    background: #fffaf2; border-radius: calc(var(--u) * 3.4);
+    box-shadow: 0 calc(var(--u) * .8) 0 #e2c4a0, 0 calc(var(--u) * 1.4) calc(var(--u) * 3) rgba(0, 0, 0, .25);
+    animation: aparece .5s cubic-bezier(.34, 1.6, .6, 1) both, latido 1.8s ease-in-out .8s infinite;
+  }
+  @keyframes aparece { from { opacity: 0; transform: scale(.4); } }
+  .opcion > * { position: absolute; pointer-events: none; }
+  .opcion .pizza { left: 12%; top: 12%; width: 62%; transform: none; transition: none; }
+  .opcion .lupa { left: 42%; top: 42%; width: 52%; height: 52%; }
+  .opcion .mini {
+    width: 46%; height: 58%; top: 20%; border-radius: calc(var(--u) * 1.4); overflow: hidden; box-sizing: border-box;
+    box-shadow: 0 calc(var(--u) * .4) calc(var(--u) * 1) rgba(0, 0, 0, .25);
+  }
+  .opcion .mini.dorso {
+    left: 8%; transform: rotate(-9deg); display: grid; place-items: center; color: #fff; font-size: calc(var(--u) * 5);
+    background: radial-gradient(circle at 35% 30%, #ffd27a, #ff8a3d 75%); border: calc(var(--u) * .4) solid #fff;
+  }
+  .opcion .mini.cara { left: 46%; transform: rotate(8deg); background: #fffaf2; border: calc(var(--u) * .3) solid #eadbc8; }
+  .opcion .mini.cara img { width: 100%; height: 100%; object-fit: contain; }
+  .opcion .perro { left: 4%; top: 8%; width: 70%; height: 84%; object-fit: contain; }
+  .opcion .emoji { right: 6%; bottom: 6%; font-size: calc(var(--u) * 7); }
+  .opcion .hueso { right: 4%; bottom: 6%; width: 36%; height: 36%; object-fit: contain; }
+
+  /* Parejas (memory): cartas que se giran */
+  .mcarta {
+    position: absolute; z-index: 35; width: 16.5%; aspect-ratio: 1; transform: translate(-50%, -50%);
+    perspective: 900px; cursor: pointer; animation: entra .45s cubic-bezier(.34, 1.6, .6, 1) both;
+  }
+  .mcarta .giro { position: absolute; inset: 0; transition: transform .45s; transform-style: preserve-3d; }
+  .mcarta.girada .giro { transform: rotateY(180deg); }
+  .mcarta .cara, .mcarta .dorso {
+    position: absolute; inset: 0; border-radius: calc(var(--u) * 2.4); overflow: hidden;
+    -webkit-backface-visibility: hidden; backface-visibility: hidden; display: grid; place-items: center;
+    box-shadow: 0 calc(var(--u) * .6) 0 #d9b48c, 0 calc(var(--u) * 1) calc(var(--u) * 2) rgba(0, 0, 0, .25);
+  }
+  .mcarta .dorso {
+    background: radial-gradient(circle at 35% 30%, #ffd27a, #ff8a3d 75%); border: calc(var(--u) * .5) solid #fff;
+    box-sizing: border-box; color: #fff; font-size: calc(var(--u) * 7); text-shadow: 0 calc(var(--u) * .3) 0 #c4561c;
+  }
+  .mcarta .cara { background: #fffaf2; transform: rotateY(180deg); }
+  .mcarta .cara img { position: absolute; left: 8%; top: 8%; width: 84%; height: 84%; object-fit: contain; pointer-events: none; }
+  .mcarta .cara.foto img { left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+  .mcarta .cara .pizza { position: absolute; left: 8%; top: 8%; width: 84%; transform: none; transition: none; }
+  .mcarta .cara .emoji { font-size: calc(var(--u) * 8); }
+  .mcarta.pareja { animation: bien .7s ease-out; }
+  .mcarta.pareja .cara { box-shadow: 0 0 0 calc(var(--u) * .6) #7ed957, 0 calc(var(--u) * 1) calc(var(--u) * 2.4) rgba(80, 180, 60, .6); }
+  @keyframes confeti { to { transform: translate(var(--dx), var(--dy)) rotate(540deg); opacity: 0; } }
+</style>
+</head>
+<body>
+<div id="difuso"></div>
+<div id="escena">
+  <img id="fondo" alt="">
+  <div id="capa"></div>
+  <div id="oscuro"></div>
+  <div id="luzTele"></div>
+  <div id="burbuja"></div>
+</div>
+<div id="ui">
+  <div id="texto"></div>
+  <div class="boton inactivo" id="es">🇪🇸</div>
+  <div class="boton inactivo" id="oir">🔊</div>
+  <div class="boton" id="ant"><svg viewBox="0 0 10 10"><path d="M5 1.6 L9.2 5.3 H7.9 V8.7 H6 V6.4 H4 V8.7 H2.1 V5.3 H0.8Z" fill="#fff"/></svg></div>
+  <div class="boton" id="sig"></div>
+  <div id="seguro" class="oculto">
+    <div class="caja">
+      <svg class="casa" viewBox="0 0 10 10"><path d="M5 1.6 L9.2 5.3 H7.9 V8.7 H6 V6.4 H4 V8.7 H2.1 V5.3 H0.8Z" fill="#ff8a3d"/></svg>
+      <div class="pregunta">¿Volver al inicio?</div>
+      <div class="opciones">
+        <div class="boton si"><svg viewBox="0 0 10 10"><path d="M2 5.2 L4.2 7.4 L8.2 2.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="boton no"><svg viewBox="0 0 10 10"><path d="M2.8 2.8 L7.2 7.2 M7.2 2.8 L2.8 7.2" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+      </div>
+    </div>
+  </div>
+  <div id="portada">
+    <h1 id="titulo"></h1>
+    <div class="arranque">
+      <div class="boton cargando" id="jugar"><svg viewBox="0 0 10 10"><path d="M3 2 L8 5 L3 8Z" fill="#fff"/></svg></div>
+      <div class="boton cargando" id="juegos"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="9" height="12" rx="1.6" fill="#fff" transform="rotate(-10 7.5 12)"/><rect x="12" y="5" width="9" height="12" rx="1.6" fill="#fff" opacity=".85" transform="rotate(10 16.5 11)"/></svg></div>
+    </div>
+  </div>
+</div>
+<div id="girar">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#ffd27a" stroke-width="1.6" stroke-linecap="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg>
+  <div>Pon la pantalla tumbada</div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const escena = $('#escena'), fondo = $('#fondo'), capa = $('#capa'), oscuro = $('#oscuro');
+const texto = $('#texto'), burbuja = $('#burbuja'), sig = $('#sig');
+const params = new URLSearchParams(location.search);
+const BASE = 'cuento/';
+const FLECHA = '<svg viewBox="0 0 10 10"><path d="M3 2 L8 5 L3 8Z" fill="#fff"/></svg>';
+const OTRA_VEZ = '<svg viewBox="0 0 10 10"><path d="M8 5 A3 3 0 1 1 6.5 2.4" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/><path d="M5.2 0.8 L8.2 2.2 L5.6 4.2Z" fill="#fff"/></svg>';
+
+// La pizza con cara de calabaza: cada capa aparece al tocarla
+const PIZZA = `<svg viewBox="0 0 200 200">
+  <circle cx="100" cy="100" r="98" fill="#c98b4f" stroke="#8a5a2b" stroke-width="3"/>
+  <circle class="masa" cx="100" cy="100" r="85" fill="#f3d08f" stroke="#dba560" stroke-width="11"/>
+  <g class="capa tomate"><path d="M100 31 C141 29 171 60 169 100 C171 141 140 171 100 169 C59 171 29 140 31 100 C29 59 60 29 100 31Z" fill="#d8432b"/></g>
+  <g class="capa queso">
+    <path d="M100 38 C136 36 163 63 161 100 C163 137 136 164 100 162 C64 164 37 137 39 100 C37 63 64 36 100 38Z" fill="#ffa63a"/>
+    <g fill="none" stroke="#e8822a" stroke-width="3" opacity=".7">
+      <path d="M100 40 Q84 100 100 160"/><path d="M100 40 Q116 100 100 160"/>
+      <path d="M72 46 Q50 100 72 154"/><path d="M128 46 Q150 100 128 154"/>
+    </g>
+  </g>
+  <g class="capa horneada" fill="#c0682a" opacity=".55">
+    <circle cx="70" cy="60" r="5"/><circle cx="140" cy="70" r="4"/><circle cx="60" cy="130" r="4"/>
+    <circle cx="135" cy="140" r="5"/><circle cx="100" cy="150" r="3"/><circle cx="150" cy="105" r="3"/>
+  </g>
+  <g class="capa ojos" fill="#2d2622"><path d="M56 94 L75 60 L94 94Z"/><path d="M106 94 L125 60 L144 94Z"/></g>
+  <g class="capa sonrisa">
+    <path d="M50 110 Q100 176 150 110 L134 118 L126 107 L114 121 L100 110 L86 121 L74 107 L66 118Z" fill="#2d2622"/>
+    <path d="M92 20 Q99 6 112 14 L106 32 L94 32Z" fill="#4f8f3a"/>
+  </g>
+</svg><div class="vapor"><i></i><i></i><i></i></div>`;
+
+let C, pagina = 0, turno = 0, actores = {}, pendiente = null, terminada = false, iniciado = false;
+const aspectos = {};
+
+// ---------- Sonidos (Web Audio) y voces ----------
+let ac = null, fuente = null, acaba = null;
+const buffers = {};
+function tono(f0, f1, dur, tipo = 'sine', vol = .25, cuando = 0) {
+  if (!ac) return;
+  const t = ac.currentTime + cuando, o = ac.createOscillator(), g = ac.createGain();
+  o.type = tipo; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + .02);
+}
+const SONIDOS = {
+  pop: () => tono(520, 170, .16, 'sine', .3),
+  boing: () => tono(260, 540, .18, 'triangle', .18),
+  clic: () => { tono(1900, 900, .03, 'square', .12); tono(300, 110, .07, 'sine', .25, .01); },
+  ding: () => { tono(1318, 1318, 1.8, 'sine', .3); tono(2637, 2637, 1.1, 'sine', .1); },
+  bien: () => { tono(523, 523, .18, 'triangle', .22); tono(659, 659, .18, 'triangle', .22, .1); tono(784, 784, .4, 'triangle', .22, .2); },
+  tictac: () => { for (let i = 0; i < 6; i++) tono(i % 2 ? 900 : 1250, i % 2 ? 860 : 1200, .04, 'square', .1, i * .5); return espera(3000); },
+};
+function suena(n) { return SONIDOS[n] && SONIDOS[n](); }
+const espera = ms => new Promise(r => setTimeout(r, ms));
+
+function buffer(url) {
+  if (!(url in buffers)) {
+    buffers[url] = fetch(url).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+      .then(d => ac.decodeAudioData(d)).catch(() => null);
+  }
+  return buffers[url];
+}
+function suelta(b) { const s = ac.createBufferSource(); s.buffer = b; s.connect(ac.destination); s.start(); return s; }
+// La narración va por un solo canal: una frase nueva corta la anterior
+async function reproduce(url) {
+  const b = await buffer(url);
+  if (!b) return false;
+  para();
+  return new Promise(res => { acaba = res; fuente = suelta(b); fuente.onended = () => { fuente = null; acaba = null; res(true); }; });
+}
+// Cortar la frase en curso; quien la estaba esperando sigue adelante
+function para() {
+  if (!fuente) return;
+  const r = acaba; fuente.onended = null; try { fuente.stop(); } catch {}
+  fuente = null; acaba = null; if (r) r(true);
+}
+// Las palabras sueltas suenan aparte, sin cortar la narración
+async function suenaPalabra(url) { const b = await buffer(url); if (b) await new Promise(r => { suelta(b).onended = r; }); }
+// Audios que usa cada página (para tenerlos cargados antes de que hagan falta)
+function clavesVoz(n) {
+  const pag = C.paginas[n], F = C.frasesJuego;
+  const comunes = ['juego-otra', 'juego-fin', ...F.bien.map((b, i) => `juego-bien-${i + 1}`)];
+  if (pag.menu) return ['juego-intro'];
+  if (pag.juego) return ['donde-intro', ...pag.juego.rondas.map(r => 'juego-' + r.carta), ...comunes];
+  if (pag.parejas) return ['parejas-intro', ...comunes];
+  if (pag.kenzo) return ['kenzo-intro', 'kenzo-rico', 'kenzo-guau', ...pag.kenzo.rondas.map(r => 'kenzo-' + r.carta), ...comunes];
+  return pag.pasos.map((p, i) => p.di && `${n + 1}-${i + 1}`).filter(Boolean);
+}
+function precargaVoces(n) {
+  if (!C.voz || !ac) return;
+  clavesVoz(n).forEach(clave => ['en', 'es'].forEach(l => buffer(`${BASE}voz/${clave}.${l}.m4a`)));
+}
+const indice = id => C.paginas.findIndex(p => p.id === id);
+
+// La voz dice la frase (si no hay audio, solo se ve el texto el tiempo que tardaría en decirse)
+// En inglés cada palabra del texto se puede tocar: Lily la dice, Sara la traduce y sale en la burbuja
+const clavePalabra = t => t.toLowerCase().replace(/[^a-z]/g, '');
+function pintaTexto(frase, idioma) {
+  texto.className = 've ' + idioma;
+  if (idioma !== 'en' || !C.diccionario) { texto.textContent = frase; return; }
+  texto.innerHTML = frase.split(/(\s+)/).map(t => {
+    const k = clavePalabra(t);
+    return k && C.diccionario[k] ? `<span class="p" data-k="${k}">${t}</span>` : t;
+  }).join('');
+}
+texto.addEventListener('pointerdown', e => {
+  const s = e.target.closest('.p'); if (!s || !iniciado) return;
+  const k = s.dataset.k;
+  muestraBurbuja(s, s.textContent.replace(/[^A-Za-z']/g, ''), C.diccionario[k]);
+  texto.querySelectorAll('.activa').forEach(x => x.classList.remove('activa'));
+  s.classList.add('activa'); setTimeout(() => s.classList.remove('activa'), 2200);
+  if (C.voz && ac) suenaPalabra(`${BASE}voz/palabra-${k}.en.m4a`).then(() => suenaPalabra(`${BASE}voz/palabra-${k}.es.m4a`));
+});
+
+async function narra(frase, idioma, clave) {
+  pintaTexto(frase, idioma);
+  if (C.voz && ac && await reproduce(`${BASE}voz/${clave}.${idioma}.m4a`)) return;
+  await espera(900 + frase.length * 70);
+}
+
+// ---------- Escena ----------
+const R_ESCENA = 2752 / 1536;
+function ajusta() {
+  const R = R_ESCENA, vw = innerWidth, vh = innerHeight, VISIBLE = .84;   // se recorta como mucho un 8 % por lado
+  const contiene = Math.min(vw, vh * R), cubre = Math.max(vw, vh * R);
+  const w = Math.max(contiene, Math.min(cubre, vw / VISIBLE, vh * R / VISIBLE));
+  escena.style.width = w + 'px'; escena.style.height = w / R + 'px';
+  escena.style.setProperty('--u', w / 100 + 'px');                              // lo de dentro de la escena
+  document.documentElement.style.setProperty('--u', Math.min(contiene / 100, 11) + 'px');   // botones y texto (con tope en pantallas grandes)
+  Object.values(actores).forEach(a => a.esquinas && encajaTele(a));
+}
+
+function carga(src) {
+  return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+}
+async function precarga() {
+  await Promise.all([
+    ...Object.values(C.fondos).map(f => carga(BASE + f)),
+    ...[...Object.values(C.cartas || {}), ...Object.values(C.comida || {})].filter(c => c.foto || c.img).map(c => carga(BASE + (c.foto || c.img))),
+    ...Object.entries(C.dibujos).map(async ([k, [src]]) => { const i = await carga(BASE + src); if (i) aspectos[k] = i.naturalWidth / i.naturalHeight; }),
+  ]);
+}
+
+function ponDibujo(a, nombre) {
+  const [src, escala = 1, sube = 0] = C.dibujos[nombre];
+  a.img.src = BASE + src;
+  a.el.style.height = a.h * escala + '%';
+  a.el.style.width = 'auto';
+  a.el.style.aspectRatio = aspectos[nombre] || 1;
+  a.el.style.top = (a.y - sube) + '%';
+}
+function colocaPizza(a, p) {
+  Object.assign(a.el.style, { left: p.x + '%', top: p.y + '%', width: p.w + '%', transform: `translate(-50%, -50%) scaleY(${p.aplastar ?? 1})` });
+}
+
+function crea(def) {
+  const a = { ...(C.personajes[def.id] || {}), ...def };
+  const tipo = a.tipo || 'dibujo', el = document.createElement('div');
+  el.className = tipo; a.el = el;
+  if (tipo === 'dibujo') {
+    a.img = document.createElement('img'); el.appendChild(a.img);
+    el.style.left = a.x + '%'; el.style.zIndex = a.z ?? Math.min(15, Math.round(a.y / 8));
+    ponDibujo(a, a.dibujo);
+  } else if (tipo === 'pizza') {
+    el.innerHTML = PIZZA; colocaPizza(a, a);
+    if (a.z) el.style.zIndex = a.z;
+    (a.estado || []).forEach(c => el.classList.add(c));
+  } else if (tipo === 'tele') {
+    el.style.backgroundImage = `url("${BASE}${a.imagen}")`;
+    if (a.encendida) el.classList.add('on');
+    capa.appendChild(el); encajaTele(a);
+  } else {                                   // zona, luz, interruptor: una caja
+    Object.assign(el.style, { left: a.x + '%', top: a.y + '%', width: a.w + '%' });
+    if (a.h) el.style.height = a.h + '%';
+    if (tipo === 'interruptor') el.innerHTML = '<i></i>';
+    if (a.encendida) el.classList.add('on');
+    if (a.apagado) el.classList.add('off');
+  }
+  el.addEventListener('pointerdown', e => { e.stopPropagation(); toque(a.id); });
+  capa.appendChild(el); actores[a.id] = a;
+}
+
+// Deforma la imagen de la tele (100 × 56,25 px) para que encaje en las 4 esquinas de la pantalla del dibujo
+function encajaTele(a) {
+  const W = escena.offsetWidth, H = escena.offsetHeight, w = 100, h = 56.25;
+  const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = a.esquinas.map(([x, y]) => [x / 100 * W, y / 100 * H]);
+  const dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+  const den = dx1 * dy2 - dx2 * dy1, g = (dx3 * dy2 - dx2 * dy3) / den, k = (dx1 * dy3 - dx3 * dy1) / den;
+  const m = [(x1 - x0 + g * x1) / w, (y1 - y0 + g * y1) / w, 0, g / w,
+             (x3 - x0 + k * x3) / h, (y3 - y0 + k * y3) / h, 0, k / h, 0, 0, 1, 0, x0, y0, 0, 1];
+  Object.assign(a.el.style, { width: w + 'px', height: h + 'px', transform: `matrix3d(${m.join(',')})` });
+}
+
+function pinta(n) {
+  const pag = C.paginas[n];
+  fondo.src = BASE + C.fondos[pag.fondo];
+  $('#difuso').style.backgroundImage = `url("${fondo.src}")`;
+  capa.innerHTML = ''; actores = {};
+  [...(C.zonas?.[pag.fondo] || []), ...pag.actores].forEach(crea);
+  oscuro.classList.toggle('on', !!pag.oscuro); document.body.classList.toggle('noche', !!pag.oscuro);
+  escena.classList.toggle('tele-on', pag.actores.some(a => a.tipo === 'tele' && a.encendida));
+  texto.className = ''; burbuja.classList.remove('ve');
+}
+
+function bota(a) {
+  a.el.classList.remove('bota'); void a.el.offsetWidth; a.el.classList.add('bota');
+  clearTimeout(a.tBota); a.tBota = setTimeout(() => a.el.classList.remove('bota'), 650);
+}
+
+function muestraBurbuja(el, en, es) {
+  const r = el.getBoundingClientRect(), e = escena.getBoundingClientRect();
+  burbuja.innerHTML = `<b>${en}</b><span>${es}</span>`;
+  const x = Math.min(88, Math.max(12, (r.left + r.width / 2 - e.left) / e.width * 100));
+  const y = Math.max(22, (r.top - e.top) / e.height * 100);
+  burbuja.style.left = x + '%'; burbuja.style.top = y + '%';
+  burbuja.classList.remove('ve'); void burbuja.offsetWidth; burbuja.classList.add('ve');
+  clearTimeout(muestraBurbuja.t); muestraBurbuja.t = setTimeout(() => burbuja.classList.remove('ve'), 2200);
+}
+function muestraPalabra(a) {
+  muestraBurbuja(a.el, a.palabra[0], a.palabra[1]);
+  if (C.voz && ac) suenaPalabra(`${BASE}voz/palabra-${a.palabra[0].toLowerCase().replace(/[^a-z]/g, '')}.en.m4a`);
+}
+
+function toque(id) {
+  if (!iniciado) return;
+  const a = actores[id];
+  if (pendiente && pendiente.id === id) {
+    const r = pendiente.resolve; pendiente = null; a.el.classList.remove('late'); r(); return;
+  }
+  if (a.palabra) { muestraPalabra(a); suena('boing'); }
+  if (a.tipo === undefined || a.tipo === 'pizza') bota(a);
+}
+
+function esperaToque(id) {
+  actores[id].el.classList.add('late');
+  return new Promise(r => { pendiente = { id, resolve: r }; });
+}
+
+// Órdenes de los pasos: 'pose mario mario-salta', 'bota kenzo', 'pon pizza queso', 'mueve pizza horno',
+// 'enciende luzHorno', 'apaga interruptor', 'oscuro', 'suena ding', 'zzz kenzo'
+function haz(orden) {
+  const [verbo, id, arg] = orden.split(' '), a = actores[id];
+  switch (verbo) {
+    case 'pose': return ponDibujo(a, arg);
+    case 'bota': return bota(a);
+    case 'pon': return a.el.classList.add(arg);
+    case 'enciende':
+      a.el.classList.add('on');
+      if (a.tipo === 'tele') escena.classList.add('tele-on');
+      if (a.tipo === 'luz') { a.el.classList.add('destello'); }
+      return;
+    case 'destello': a.el.classList.remove('destello'); void a.el.offsetWidth; return a.el.classList.add('destello');
+    case 'apaga': return a.el.classList.add('off');
+    case 'mueve': colocaPizza(a, a.destinos[arg]); return espera(1300);
+    case 'oscuro': document.body.classList.add('noche'); return oscuro.classList.add('on');
+    case 'suena': return suena(id);
+    case 'zzz': return a.el.insertAdjacentHTML('beforeend', '<div class="zzz"><i>z</i><i>z</i><i>z</i></div>');
+  }
+}
+
+async function ejecuta(paso, n, i, mio) {
+  if (paso.toca) { await esperaToque(paso.toca); if (mio !== turno) return; }
+  const tareas = [].concat(paso.hace || []).map(haz);
+  if (paso.di) tareas.push(narra(paso.di, 'en', `${n + 1}-${i + 1}`));
+  await Promise.all(tareas);
+  if (paso.pausa) await espera(paso.pausa);
+}
+
+function botones(fin) {
+  const sigue = C.paginas[pagina].vuelve || pagina < C.paginas.length - 1;
+  sig.innerHTML = sigue ? FLECHA : OTRA_VEZ;
+  sig.classList.toggle('ve', fin);
+  $('#es').classList.toggle('inactivo', !fin); $('#oir').classList.toggle('inactivo', !fin);
+}
+
+async function abre(n) {
+  pagina = n; const mio = ++turno;
+  pendiente = null; cartaPendiente = null; juego = null; terminada = false; para();
+  pinta(n); botones(false);
+  precargaVoces(n); if (n + 1 < C.paginas.length) precargaVoces(n + 1);
+  const pag = C.paginas[n];
+  if (pag.menu) return menu(pag.menu);           // sin ▶: se elige tocando una tarjeta
+  const jugar = pag.juego ? juega : pag.parejas ? parejas : pag.kenzo ? kenzo : null;
+  if (jugar) {
+    await jugar(pag.juego || pag.parejas || pag.kenzo, mio);
+    if (mio === turno) { terminada = true; botones(true); }
+    return;
+  }
+  const pasos = pag.pasos;
+  for (let i = 0; i < pasos.length; i++) {
+    await ejecuta(pasos[i], n, i, mio);
+    if (mio !== turno) return;
+  }
+  terminada = true; botones(true);
+}
+
+// ---------- Mini-juego «Where is…?»: la voz pregunta y Mario toca la tarjeta buena ----------
+let juego = null, cartaPendiente = null;
+const baraja = a => a.map(v => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map(v => v[1]);
+const COLORES = ['#ff6b6b', '#ffc93c', '#5ec8f2', '#7ed957', '#c08bff', '#ff9a3d'];
+function confeti(el, n = 18) {
+  const r = el.getBoundingClientRect(), e = escena.getBoundingClientRect();
+  const cx = (r.left + r.width / 2 - e.left) / e.width * 100, cy = (r.top + r.height / 2 - e.top) / e.height * 100;
+  for (let i = 0; i < n; i++) {
+    const c = document.createElement('i'), ang = Math.random() * Math.PI * 2, d = 10 + Math.random() * 14;
+    c.className = 'confeti';
+    Object.assign(c.style, { left: cx + '%', top: cy + '%', background: COLORES[i % COLORES.length] });
+    c.style.setProperty('--dx', `calc(var(--u) * ${(Math.cos(ang) * d).toFixed(1)})`);
+    c.style.setProperty('--dy', `calc(var(--u) * ${(Math.sin(ang) * d).toFixed(1)})`);
+    capa.appendChild(c); setTimeout(() => c.remove(), 1100);
+  }
+}
+// Lo que se ve en una tarjeta: la pizza, un emoji o una imagen (dibujo de personaje, foto recortada u objeto)
+const contenidoCarta = c => c.pizza ? `<div class="pizza tomate queso ojos sonrisa horneada">${PIZZA}</div>`
+  : c.emoji ? `<span class="emoji">${c.emoji}</span>`
+  : `<img src="${BASE}${c.foto || c.img || C.dibujos[c.dibujo][0]}" alt="">`;
+function pintaCartas(claves, mazo = C.cartas, { xs = [22, 50, 78], w = 24, y = 53 } = {}) {
+  const els = {};
+  claves.forEach((k, i) => {
+    const c = mazo[k], el = document.createElement('div');
+    el.className = 'carta' + (c.foto ? ' foto' : ''); el.dataset.k = k;
+    Object.assign(el.style, { left: xs[i] + '%', top: y + '%', width: w + '%', animationDelay: i * .12 + 's' });
+    el.innerHTML = contenidoCarta(c);
+    el.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      if (cartaPendiente) { const r = cartaPendiente; cartaPendiente = null; r(k); }
+    });
+    capa.appendChild(el); els[k] = el;
+  });
+  return els;
+}
+const esperaCarta = () => new Promise(r => { cartaPendiente = r; });
+const vozPalabra = (k, mazo = C.cartas) => C.voz && ac ? suenaPalabra(`${BASE}voz/palabra-${clavePalabra(mazo[k].palabra[0])}.en.m4a`) : espera(600);
+
+async function juega(J, mio) {
+  juego = { actual: null };
+  const F = C.frasesJuego;
+  const di = (f, clave) => { juego.actual = { f, clave }; return narra(f.di, 'en', clave); };
+  capa.insertAdjacentHTML('beforeend', `<div id="velo"></div><div id="estrellas">${J.rondas.map(() => '<i>★</i>').join('')}</div>`);
+  const estrellas = capa.querySelectorAll('#estrellas i');
+  $('#es').classList.remove('inactivo'); $('#oir').classList.remove('inactivo');
+  await di(J.intro, 'donde-intro'); if (mio !== turno) return;
+  for (let r = 0; r < J.rondas.length; r++) {
+    const ronda = J.rondas[r], clave = 'juego-' + ronda.carta;
+    const otras = baraja(Object.keys(C.cartas).filter(k => k !== ronda.carta)).slice(0, 2);
+    const els = pintaCartas(baraja([ronda.carta, ...otras]));
+    let tocada = esperaCarta();                 // se puede tocar mientras pregunta
+    di(ronda, clave);
+    let k = await tocada; if (mio !== turno) return;
+    while (k !== ronda.carta) {                 // falla: dice lo que ha tocado y lo vuelve a preguntar
+      para();
+      const el = els[k]; el.classList.remove('mal'); void el.offsetWidth; el.classList.add('mal');
+      suena('boing'); await vozPalabra(k); if (mio !== turno) return;
+      tocada = esperaCarta();
+      await di(F.otraVez, 'juego-otra'); if (mio !== turno) return;
+      di(ronda, clave);
+      k = await tocada; if (mio !== turno) return;
+    }
+    para();
+    els[k].classList.add('bien'); confeti(els[k]); suena('bien'); estrellas[r].classList.add('on');
+    await vozPalabra(k); if (mio !== turno) return;
+    const b = r % F.bien.length;
+    await di(F.bien[b], `juego-bien-${b + 1}`); if (mio !== turno) return;
+    Object.values(els).forEach(e => e.classList.add('fuera'));
+    await espera(350); Object.values(els).forEach(e => e.remove());
+  }
+  confeti($('#estrellas'), 36); suena('bien');
+  await di(F.fin, 'juego-fin');
+}
+
+// ---------- Menú de juegos ----------
+const ICONOS = {
+  juego: () => `<div class="pizza tomate queso ojos sonrisa horneada">${PIZZA}</div>
+    <svg class="lupa" viewBox="0 0 100 100"><circle cx="40" cy="40" r="27" fill="rgba(255,255,255,.45)" stroke="#5b3a1e" stroke-width="9"/><path d="M60 60 L88 88" stroke="#5b3a1e" stroke-width="14" stroke-linecap="round"/></svg>`,
+  parejas: () => `<div class="mini dorso">?</div><div class="mini cara"><img src="${BASE}${C.dibujos['kenzo-contento'][0]}" alt=""></div>`,
+  kenzo: () => `<img class="perro" src="${BASE}${C.dibujos['kenzo-pena'][0]}" alt="">` +
+    (C.comida.bone.img ? `<img class="hueso" src="${BASE}${C.comida.bone.img}" alt="">` : `<span class="emoji">${C.comida.bone.emoji}</span>`),
+};
+function menu(opciones) {
+  capa.insertAdjacentHTML('beforeend', '<div id="velo"></div>');
+  opciones.forEach((id, i) => {
+    const el = document.createElement('div'), w = 24, x = 22 + i * 28, pag = C.paginas[indice(id)];
+    const tipo = pag.juego ? 'juego' : pag.parejas ? 'parejas' : 'kenzo';
+    el.className = 'opcion';
+    Object.assign(el.style, { left: x - w / 2 + '%', top: 53 - w * R_ESCENA / 2 + '%', width: w + '%', animationDelay: i * .15 + 's, ' + (.8 + i * .3) + 's' });
+    el.innerHTML = ICONOS[tipo]();
+    el.addEventListener('pointerdown', e => { e.stopPropagation(); suena('pop'); abre(indice(id)); });
+    capa.appendChild(el);
+  });
+  return narra(C.frasesJuego.menu.di, 'en', 'juego-intro');
+}
+
+// ---------- Parejas (memory): se giran dos cartas; si son iguales se quedan boca arriba ----------
+async function parejas(P, mio) {
+  juego = { actual: null };
+  const F = C.frasesJuego, di = (f, clave) => { juego.actual = { f, clave }; return narra(f.di, 'en', clave); };
+  capa.insertAdjacentHTML('beforeend', '<div id="velo"></div>');
+  const claves = baraja(Object.keys(C.cartas)).slice(0, P.cuantas || 4);
+  const mazo = baraja([...claves, ...claves]);
+  const els = mazo.map((k, i) => {
+    const c = C.cartas[k], el = document.createElement('div');
+    el.className = 'mcarta'; el.dataset.k = k;
+    Object.assign(el.style, { left: 20 + (i % 4) * 20 + '%', top: 31 + Math.floor(i / 4) * 35 + '%', animationDelay: i * .06 + 's' });
+    el.innerHTML = `<div class="giro"><div class="dorso">?</div><div class="cara${c.foto ? ' foto' : ''}">${contenidoCarta(c)}</div></div>`;
+    el.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      if (cartaPendiente && !el.classList.contains('girada')) { const r = cartaPendiente; cartaPendiente = null; r(i); }
+    });
+    capa.appendChild(el); return el;
+  });
+  $('#es').classList.remove('inactivo'); $('#oir').classList.remove('inactivo');
+  let primera = esperaCarta(), hechas = 0, b = 0;
+  di(P.intro, 'parejas-intro');
+  while (hechas < claves.length) {
+    const i = await primera; if (mio !== turno) return;
+    para(); els[i].classList.add('girada'); suena('pop');
+    const segunda = esperaCarta(); vozPalabra(mazo[i]);
+    const j = await segunda; if (mio !== turno) return;
+    els[j].classList.add('girada'); suena('pop');
+    await vozPalabra(mazo[j]); if (mio !== turno) return;
+    if (mazo[i] === mazo[j]) {
+      hechas++; [els[i], els[j]].forEach(e => { e.classList.add('pareja'); confeti(e, 10); }); suena('bien');
+      if (hechas < claves.length) { const k = b++ % F.bien.length; await di(F.bien[k], `juego-bien-${k + 1}`); if (mio !== turno) return; }
+    } else {
+      await espera(900); if (mio !== turno) return;
+      els[i].classList.remove('girada'); els[j].classList.remove('girada');
+    }
+    primera = esperaCarta();
+  }
+  confeti($('#velo'), 40); suena('bien');
+  await di(F.fin, 'juego-fin');
+}
+
+// ---------- «Kenzo is hungry!»: Kenzo pide algo y Mario se lo da ----------
+async function kenzo(K, mio) {
+  juego = { actual: null };
+  const F = C.frasesJuego, di = (f, clave) => { juego.actual = { f, clave }; return narra(f.di, 'en', clave); };
+  capa.insertAdjacentHTML('beforeend', `<div id="velo"></div><div id="estrellas">${K.rondas.map(() => '<i>★</i>').join('')}</div>`);
+  const estrellas = capa.querySelectorAll('#estrellas i');
+  crea({ id: 'kenzo', dibujo: 'kenzo-pena', x: 21, y: 93, h: 50, z: 36 });
+  const perro = actores.kenzo;
+  $('#es').classList.remove('inactivo'); $('#oir').classList.remove('inactivo');
+  bota(perro); await di(K.intro, 'kenzo-intro'); if (mio !== turno) return;
+  for (let r = 0; r < K.rondas.length; r++) {
+    const ronda = K.rondas[r], clave = 'kenzo-' + ronda.carta;
+    const otras = baraja(Object.keys(C.comida).filter(k => k !== ronda.carta)).slice(0, 2);
+    const els = pintaCartas(baraja([ronda.carta, ...otras]), C.comida, { xs: [46, 64, 82], w: 16 });
+    let tocada = esperaCarta();
+    di(ronda, clave);
+    let k = await tocada; if (mio !== turno) return;
+    while (k !== ronda.carta) {
+      para();
+      const el = els[k]; el.classList.remove('mal'); void el.offsetWidth; el.classList.add('mal');
+      suena('boing'); await vozPalabra(k, C.comida); if (mio !== turno) return;
+      tocada = esperaCarta();
+      await di(F.otraVez, 'juego-otra'); if (mio !== turno) return;
+      di(ronda, clave);
+      k = await tocada; if (mio !== turno) return;
+    }
+    para();
+    els[k].classList.add('bien'); confeti(els[k]); suena('bien'); estrellas[r].classList.add('on');
+    ponDibujo(perro, 'kenzo-contento'); bota(perro);
+    await vozPalabra(k, C.comida); if (mio !== turno) return;
+    const premio = ronda.premio || 'rico';
+    await di(K[premio], 'kenzo-' + premio); if (mio !== turno) return;
+    ponDibujo(perro, 'kenzo-pena');
+    Object.values(els).forEach(e => e.classList.add('fuera'));
+    await espera(350); Object.values(els).forEach(e => e.remove());
+  }
+  ponDibujo(perro, 'kenzo-contento'); bota(perro); confeti($('#estrellas'), 36); suena('bien');
+  await di(F.fin, 'juego-fin');
+}
+
+// 🔊 repite la página en inglés · 🇪🇸 la cuenta en español
+async function repite(idioma) {
+  const pag = C.paginas[pagina];
+  if (pag.juego || pag.parejas || pag.kenzo) {   // en los juegos: repite la pregunta de ahora
+    if (juego?.actual) { const { f, clave } = juego.actual; narra(idioma === 'es' ? f.es : f.di, idioma, clave); }
+    return;
+  }
+  if (!terminada) return;
+  const mio = ++turno, pasos = C.paginas[pagina].pasos;
+  for (let i = 0; i < pasos.length; i++) {
+    const p = pasos[i]; if (!p.di) continue;
+    await narra(idioma === 'es' ? p.es : p.di, idioma, `${pagina + 1}-${i + 1}`);
+    if (mio !== turno) return;
+  }
+}
+
+// Revisión: ?ver=N pinta la página N+1 con todos sus pasos ya hechos, sin esperar
+function verTerminada(n) {
+  pinta(n); iniciado = true; $('#portada').classList.add('oculto');
+  const pag = C.paginas[n];
+  if (pag.menu || pag.parejas || pag.kenzo) {     // los pinta como al empezar, sin voz
+    pagina = n; const mio = ++turno;
+    if (pag.menu) menu(pag.menu); else if (pag.parejas) parejas(pag.parejas, mio); else kenzo(pag.kenzo, mio);
+    return;
+  }
+  if (pag.juego) {
+    const J = pag.juego;
+    capa.insertAdjacentHTML('beforeend', `<div id="velo"></div><div id="estrellas">${J.rondas.map((r, i) => `<i class="${i < 2 ? 'on' : ''}">★</i>`).join('')}</div>`);
+    pintaCartas(Object.keys(C.cartas).slice(0, 3)); pintaTexto(J.rondas[0].di, 'en'); pagina = n;
+    return;
+  }
+  for (const p of C.paginas[n].pasos) [].concat(p.hace || []).forEach(o => { if (!o.startsWith('suena')) haz(o); });
+  const ultima = [...C.paginas[n].pasos].reverse().find(p => p.di);
+  if (ultima) pintaTexto(ultima.di, 'en');
+  pagina = n; terminada = true; botones(true);
+}
+
+async function arranca() {
+  C = window.CUENTO;
+  $('#titulo').textContent = C.titulo;
+  await precarga();
+  if (params.has('zonas')) escena.classList.add('ver-zonas');
+  if (params.has('ver')) return verTerminada(+params.get('ver'));
+  pinta(0);
+  $('#jugar').classList.remove('cargando'); $('#juegos').classList.remove('cargando');
+}
+
+// iPad/iPhone: con el modo silencio puesto, Safari calla el Web Audio (lo vimos en el cuerpo humano). Dos remedios:
+// 1) pedir sesión de «reproducción» (iOS 17+); 2) dejar sonando en bucle un audio normal en silencio,
+// que pasa todo el sonido a la categoría de reproducción.
+let silencioso;
+function desbloqueaAudio() {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+  if (silencioso) return;
+  const sr = 8000, n = sr / 2, buf = new ArrayBuffer(44 + n * 2), d = new DataView(buf);
+  const txt = (o, t) => [...t].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0)));
+  txt(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); txt(8, 'WAVE'); txt(12, 'fmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true);
+  d.setUint32(24, sr, true); d.setUint32(28, sr * 2, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); txt(36, 'data'); d.setUint32(40, n * 2, true);
+  silencioso = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+  silencioso.loop = true; silencioso.setAttribute('playsinline', ''); silencioso.play().catch(() => {});
+}
+
+// ▶ empieza el cuento · el botón de las cartas va directo al menú de juegos
+function empieza(n) {
+  if (iniciado) return;
+  desbloqueaAudio();
+  if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+  ac.resume();
+  iniciado = true; $('#portada').classList.add('oculto'); abre(n);
+  if (matchMedia('(pointer: coarse)').matches) {          // en tablet y móvil, a pantalla completa si se deja
+    const d = document.documentElement, pc = d.requestFullscreen || d.webkitRequestFullscreen;
+    try { pc && Promise.resolve(pc.call(d)).catch(() => {}); } catch {}
+  }
+}
+$('#jugar').addEventListener('click', () => empieza(0));
+$('#juegos').addEventListener('click', () => empieza(indice('menu')));
+// En los juegos, ▶ y ◀ vuelven al menú
+sig.addEventListener('click', () => { const p = C.paginas[pagina]; abre(p.vuelve ? indice(p.vuelve) : pagina + 1 < C.paginas.length ? pagina + 1 : 0); });
+// 🏠 (arriba a la izquierda): pregunta «¿Volver al inicio?» y, si se dice que sí, para todo y vuelve a la portada
+const seguro = $('#seguro');
+function cierraSeguro() { clearTimeout(cierraSeguro.t); seguro.classList.add('oculto'); }
+$('#ant').addEventListener('click', () => {
+  seguro.classList.remove('oculto');
+  clearTimeout(cierraSeguro.t); cierraSeguro.t = setTimeout(cierraSeguro, 6000);   // si nadie contesta, se cierra sola
+});
+seguro.querySelector('.no').addEventListener('click', cierraSeguro);
+seguro.addEventListener('pointerdown', e => { if (e.target === seguro) cierraSeguro(); });   // tocar fuera = no
+seguro.querySelector('.si').addEventListener('click', () => {
+  cierraSeguro();
+  turno++; para(); pendiente = null; cartaPendiente = null; juego = null; terminada = false; iniciado = false;
+  pagina = 0; pinta(0); botones(false);
+  $('#portada').classList.remove('oculto');
+});
+$('#es').addEventListener('click', () => repite('es'));
+$('#oir').addEventListener('click', () => repite('en'));
+addEventListener('resize', ajusta);
+ajusta();
+
+const s = document.createElement('script');
+s.src = BASE + 'datos.js'; s.onload = arranca;
+s.onerror = () => { $('#titulo').textContent = 'No encuentro el cuento'; };
+document.head.appendChild(s);
+</script>
+</body>
+</html>
